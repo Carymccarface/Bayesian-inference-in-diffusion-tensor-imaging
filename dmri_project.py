@@ -222,6 +222,26 @@ def get_data():
     return maskdata, mask, gtab
 
 
+
+'''y, point_estimate, gtab = get_preprocessed_data()
+
+print("Shape of y:", y.shape)
+print("y:", y)
+
+print("S0:", point_estimate[0])
+print("Eigenvalues:", point_estimate[1])
+print("Eigenvectors:")
+print(point_estimate[2])
+
+print("b-values:")
+print(gtab.bvals)
+
+plt.plot(y)
+plt.xlabel("Measurement")
+plt.ylabel("Signal")
+plt.title("Diffusion MRI signal for selected voxel")
+plt.show()'''
+
 """
 =============================================================================
 Linear Algebra Helpers (already implemented)
@@ -405,13 +425,37 @@ class frozen_prior:
     # Hint: you may want to add input parameters to these methods.
 
     def __init__(self):
-        raise NotImplementedError
+        self.alpha_S = 2
+        self.theta_S = 500
+        self.alpha_lambda = 4
+        self.theta_lambda = 2.5e-4
     
-    def rvs(self):
-        raise NotImplementedError
+    def rvs(self, input_seed):
+        S0 = gamma.rvs(a=self.alpha_S, scale=self.theta_S, random_state=input_seed)
+        lambda1 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
+        lambda2 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
+        lambda3 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
+
+        V = Rotation.random(random_state=input_seed).as_matrix()
+
+        return S0, np.array([lambda1, lambda2, lambda3]), V
     
-    def logpdf(self):
-        raise NotImplementedError
+    def logpdf(self, S0, lambda1, lambda2, lambda3, V):
+        log_prior_S0 = gamma.logpdf(S0, a=self.alpha_S, scale=self.theta_S)
+        log_prior_lambda1 = gamma.logpdf(lambda1, a=self.alpha_lambda, scale=self.theta_lambda)
+        log_prior_lambda2 = gamma.logpdf(lambda2, a=self.alpha_lambda, scale=self.theta_lambda)
+        log_prior_lambda3 = gamma.logpdf(lambda3, a=self.alpha_lambda, scale=self.theta_lambda)
+        log_prior_V = 0 # idkkk?
+
+        return (log_prior_S0 + log_prior_lambda1 + log_prior_lambda2 + log_prior_lambda3 + log_prior_V)
+
+prior = frozen_prior()
+sample = prior.rvs(42)
+
+#print(sample)
+
+x = prior.logpdf(sample[0], sample[1][0], sample[1][1], sample[1][2], sample[2])
+print(x)
 
 
 class frozen_likelihood:
@@ -679,5 +723,5 @@ def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     plt.savefig("results_{}.png".format(method), dpi=300, bbox_inches='tight')
 
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+    #main()

@@ -462,10 +462,11 @@ class frozen_likelihood:
     # Placeholder for the likelihood (with partial code provided).
     # Hint: you may want to add input parameters to these methods.
 
-    def __init__(self, gtab):
+    def __init__(self, gtab, sigma=29, y):
         self.gtab = gtab   # store gradient table with b-values and b-vectors
+        self.sigma = sigma
+        self.y = np.asarray(y)
 
-        raise NotImplementedError
 
     def logpdf(self, S0, evecs, evals):
         S0 = np.atleast_1d(S0)        # ensure S0 is array-like

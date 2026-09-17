@@ -431,12 +431,14 @@ class frozen_prior:
         self.theta_lambda = 2.5e-4
     
     def rvs(self, input_seed):
-        S0 = gamma.rvs(a=self.alpha_S, scale=self.theta_S, random_state=input_seed)
-        lambda1 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
-        lambda2 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
-        lambda3 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=input_seed)
+        rng = np.random.default_rng(input_seed)
 
-        V = Rotation.random(random_state=input_seed).as_matrix()
+        S0 = gamma.rvs(a=self.alpha_S, scale=self.theta_S, random_state=rng)
+        lambda1 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=rng)
+        lambda2 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=rng)
+        lambda3 = gamma.rvs(a=self.alpha_lambda, scale=self.theta_lambda, random_state=rng)
+
+        V = Rotation.random(random_state=rng).as_matrix()
 
         return S0, np.array([lambda1, lambda2, lambda3]), V
     
@@ -452,7 +454,7 @@ class frozen_prior:
 prior = frozen_prior()
 sample = prior.rvs(42)
 
-#print(sample)
+print(sample)
 
 x = prior.logpdf(sample[0], sample[1][0], sample[1][1], sample[1][2], sample[2])
 print(x)

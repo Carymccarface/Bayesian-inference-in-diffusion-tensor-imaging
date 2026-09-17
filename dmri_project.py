@@ -479,7 +479,10 @@ class frozen_likelihood:
         # Model signal S given tensor D and baseline S0
         S = S0[:, None] * np.exp( - np.einsum('...j, ijk, ...k->i...', q, D, q))
         
-        raise NotImplementedError
+        log_prob_each_measurement = norm.logpdf(self.y,loc=S, scale=self.sigma)
+        log_prob_sum = np.sum(log_prob_each_measurement, axis=-1)
+        
+        return log_prob_sum 
 
 
 

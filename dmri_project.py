@@ -451,13 +451,13 @@ class frozen_prior:
 
         return (log_prior_S0 + log_prior_lambda1 + log_prior_lambda2 + log_prior_lambda3 + log_prior_V)
 
-prior = frozen_prior()
-sample = prior.rvs(42)
+#prior = frozen_prior()
+#sample = prior.rvs(42)
 
-print(sample)
+#print(sample)
 
-x = prior.logpdf(sample[0], sample[1][0], sample[1][1], sample[1][2], sample[2])
-print(x)
+#x = prior.logpdf(sample[0], sample[1][0], sample[1][1], sample[1][2], sample[2])
+#print(x)
 
 
 class frozen_likelihood:
@@ -638,6 +638,19 @@ def main():
     np.random.seed(0)
     n_samples = 10000
 
+    y, point_estimate, gtab = get_preprocessed_data()
+    S0, evals, V = point_estimate
+    lambda1, lambda2, lambda3 = evals
+
+    prior = frozen_prior()
+    prior_value = prior.logpdf(S0, lambda1, lambda2, lambda3, V)
+
+    likelihood = frozen_likelihood(gtab, y)
+    likelihood_value = likelihood.logpdf(S0, V, evals)
+
+    print("Log-prior:", prior_value)
+    print("Log-likelihood:", likelihood_value)
+
     # Run Metropolis–Hastings and plot results
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
     burn_in = 0
@@ -729,5 +742,5 @@ def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     plt.savefig("results_{}.png".format(method), dpi=300, bbox_inches='tight')
 
 
-#if __name__ == "__main__":
-    #main()
+if __name__ == "__main__":
+    main()

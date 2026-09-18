@@ -569,13 +569,74 @@ Uses memoization to speed up repeated runs.
 """
 
 @disk_memoize()
-def metropolis_hastings(n_samples, gamma_param, nu_param, plot_traces=False):
+def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, step_evals, step_rotation, plot_traces=False, seed=42):
     # Students: implement Metropolis-Hastings here.
     # Before starting, make sure the prior and likelihood are implemented.
     # Note: you may change, add, or remove input parameters depending on your design
     # (e.g. pass initialization values like those prepared in main()).
 
-    raise NotImplementedError
+    rng = np.random.default_rng(seed)
+
+    # This corresponds to pi 
+    def log_posterior(S0, evals, V):
+        log_post = prior.logpdf(S0, evals[0], evals[1], evals[2], V) + likelihood.logpdf(S0, V, evals)
+        return log_post
+    
+    # 1. Initialize current parameters from point_estimate.
+    S0, evals, V = point_estimate
+    S0 = float(S0)
+    evals = np.array(evals, dtype=float)
+    V = np.array(V, dtype=float)
+
+    current_log_posterior = float(log_posterior(S0, evals, V))
+
+    # 2. Allocate arrays for the samples.
+    S0_samples = np.empty(n_samples)
+    evals_samples = np.empty((n_samples, 3))
+    evecs_samples = np.empty((n_samples, 3, 3))
+
+    # 3. Repeat n_samples times:
+    for t in range(n_samples):
+            #propose S0, all three eigenvalues, and V;
+            new_S0 = S0 + rng.normal(0, step_S0)
+            new_evals = evals + rng.normal(0, step_evals, size=3)
+            
+            rotation = Rotation.from_rotvec(rng.normal(0, step_rotation, size=3)).as_matrix()
+            new_V = rotation @ V
+
+            #score the proposed state;
+            proposed_log_posterior = float(log_posterior(new_S0, new_evals, new_V))
+
+            #accept or reject the whole state;
+            log_a = proposed_log_posterior - current_log_posterior
+
+            if log_a >= 0:
+                # a >= 1: always accept the proposed state
+                accept = True
+            else:
+                # a < 1: accept with probability a = exp(log_a)
+                accept = rng.uniform() < np.exp(log_a)
+
+            if accept:
+                S0, evals, V = new_S0, new_evals, new_V
+                current_log_posterior = proposed_log_posterior
+            # Otherwise, nothing changes: the proposal is rejected.
+
+            #save the current state.
+            S0_samples[t] = S0
+            evals_samples[t] = evals
+            evecs_samples[t] = V
+
+
+    # 4. Optionally plot traces.
+    if plot_traces:
+        fig, axes = plt.subplots(2, 1, sharex=True)
+        axes[0].plot(S0_samples)
+        axes[0].set_ylabel("S0")
+        axes[1].plot(evals_samples)
+        axes[1].set_ylabel("Eigenvalues")
+        axes[1].set_xlabel("Iteration")
+        plt.show()
 
     return S0_samples, evals_samples, evecs_samples
 
@@ -652,7 +713,19 @@ def main():
     print("Log-likelihood:", likelihood_value)
 
     # Run Metropolis–Hastings and plot results
-    S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
+    #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
+    S0_mh, evals_mh, evecs_mh = metropolis_hastings(
+    n_samples=n_samples,
+    point_estimate=point_estimate,
+    prior=prior,
+    likelihood=likelihood,
+    step_S0=5.0,
+    step_evals=1e-5,
+    step_rotation=0.05,
+    plot_traces=True,
+    seed=42,
+    force_recompute=True,
+    )
     burn_in = 0
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 

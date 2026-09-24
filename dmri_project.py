@@ -588,7 +588,7 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
     evals = np.array(evals, dtype=float)
     V = np.array(V, dtype=float)
 
-    current_log_posterior = float(log_posterior(S0, evals, V))
+    current_log_posterior = log_posterior(S0, evals, V)
 
     # 2. Allocate arrays for the samples.
     S0_samples = np.empty(n_samples)
@@ -605,7 +605,7 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
             new_V = rotation @ V
 
             #score the proposed state;
-            proposed_log_posterior = float(log_posterior(new_S0, new_evals, new_V))
+            proposed_log_posterior = log_posterior(new_S0, new_evals, new_V)
 
             #accept or reject the whole state;
             log_a = proposed_log_posterior - current_log_posterior

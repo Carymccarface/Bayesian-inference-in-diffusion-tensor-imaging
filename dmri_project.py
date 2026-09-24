@@ -569,7 +569,7 @@ Uses memoization to speed up repeated runs.
 """
 
 @disk_memoize()
-def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, step_evals, step_rotation, plot_traces=False, seed=42):
+def metropolis_hastings(n_samples, point_estimate, prior, likelihood, gamma_param, nu_param, plot_traces=False, seed=42):
     # Students: implement Metropolis-Hastings here.
     # Before starting, make sure the prior and likelihood are implemented.
     # Note: you may change, add, or remove input parameters depending on your design
@@ -587,6 +587,8 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
     S0 = float(S0)
     evals = np.array(evals, dtype=float)
     V = np.array(V, dtype=float)
+    # Construct the current diffusion tensor.
+    D = compute_D(evals, V).squeeze()
 
     current_log_posterior = log_posterior(S0, evals, V)
 
@@ -595,35 +597,47 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
     evals_samples = np.empty((n_samples, 3))
     evecs_samples = np.empty((n_samples, 3, 3))
 
+    
+    # Initial stuff
     n_accepted = 0
+    gamma_shape = gamma_param**(-2)
 
     # 3. Repeat n_samples times:
     for t in range(n_samples):
-            #propose S0, all three eigenvalues, and V;
-            new_S0 = S0 + rng.normal(0, step_S0)
-            new_evals = evals + rng.normal(0, step_evals, size=3)
+            #propose S0, all three eigenvalues, and V
+            new_S0 = gamma.rvs(a=gamma_shape, scale = gamma_param**2*S0, random_state=rng)
             
-            rotation = Rotation.from_rotvec(rng.normal(0, step_rotation, size=3)).as_matrix()
-            new_V = rotation @ V
+            new_D = wishart.rvs(df=nu_param, scale=D/nu_param, random_state = rng)
+            new_evals, new_V = np.linalg.eigh(new_D)
+            # np.linalg.eigh returns eigenvalues in ascending order.
+            # DIPY uses the largest eigenvalue first.
+            order = np.argsort(new_evals)[::-1]
+            new_evals = new_evals[order]
+            new_V = new_V[:, order]
 
-            #score the proposed state;
-            proposed_log_posterior = log_posterior(new_S0, new_evals, new_V)
+            #score the proposed posterior
+            new_log_posterior = log_posterior(new_S0, new_evals, new_V)
 
-            #accept or reject the whole state;
-            log_a = proposed_log_posterior - current_log_posterior
+            #evaluate q(z'|z)
+            log_q_forward = (gamma.logpdf(new_S0, a=gamma_shape, scale=gamma_param**2 * S0,)
+                + wishart.logpdf(new_D, df=nu_param, scale=D/nu_param,))
 
-            if log_a >= 0:
-                # a >= 1: always accept the proposed state
-                accept = True
-            else:
-                # a < 1: accept with probability a = exp(log_a)
-                accept = rng.uniform() < np.exp(log_a)
+            #Evaluate q(z|z')
+            log_q_reverse = (gamma.logpdf(S0, a=gamma_shape, scale=gamma_param**2 * new_S0,)
+                + wishart.logpdf(D, df=nu_param, scale=new_D/nu_param,))
+            
+            # Acceptance ratio 
+            log_a = new_log_posterior- current_log_posterior + log_q_reverse - log_q_forward
 
-            if accept:
-                S0, evals, V = new_S0, new_evals, new_V
-                current_log_posterior = proposed_log_posterior
+            # Accept or reject the whole state 
+            if np.log(rng.uniform()) < min(0.0, log_a):
+                S0 = new_S0
+                D = new_D
+                evals = new_evals
+                V = new_V
+
+                current_log_posterior = new_log_posterior
                 n_accepted += 1
-            # Otherwise, nothing changes: the proposal is rejected.
 
             #save the current state.
             S0_samples[t] = S0
@@ -701,7 +715,7 @@ def main():
 
     # Set random seed and number of posterior samples
     np.random.seed(0)
-    n_samples = 30000
+    n_samples = 10000
 
     y, point_estimate, gtab = get_preprocessed_data()
     S0, evals, V = point_estimate
@@ -719,13 +733,12 @@ def main():
     # Run Metropolis–Hastings and plot results
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
-    n_samples=n_samples,
+    n_samples=30000,
     point_estimate=point_estimate,
     prior=prior,
     likelihood=likelihood,
-    step_S0=1.8,
-    step_evals=3.0e-6,
-    step_rotation=0.018,
+    gamma_param = 0.02, 
+    nu_param=5000, 
     plot_traces=True,
     seed=42,
     force_recompute=True,

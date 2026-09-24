@@ -595,6 +595,8 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
     evals_samples = np.empty((n_samples, 3))
     evecs_samples = np.empty((n_samples, 3, 3))
 
+    n_accepted = 0
+
     # 3. Repeat n_samples times:
     for t in range(n_samples):
             #propose S0, all three eigenvalues, and V;
@@ -620,6 +622,7 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
             if accept:
                 S0, evals, V = new_S0, new_evals, new_V
                 current_log_posterior = proposed_log_posterior
+                n_accepted += 1
             # Otherwise, nothing changes: the proposal is rejected.
 
             #save the current state.
@@ -627,6 +630,7 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, step_S0, s
             evals_samples[t] = evals
             evecs_samples[t] = V
 
+    print("Acceptance rate:", n_accepted / n_samples)
 
     # 4. Optionally plot traces.
     if plot_traces:
@@ -697,7 +701,7 @@ def main():
 
     # Set random seed and number of posterior samples
     np.random.seed(0)
-    n_samples = 10000
+    n_samples = 30000
 
     y, point_estimate, gtab = get_preprocessed_data()
     S0, evals, V = point_estimate
@@ -719,14 +723,14 @@ def main():
     point_estimate=point_estimate,
     prior=prior,
     likelihood=likelihood,
-    step_S0=5.0,
-    step_evals=1e-5,
-    step_rotation=0.05,
+    step_S0=3.5,
+    step_evals=7e-6,
+    step_rotation=0.035,
     plot_traces=True,
     seed=42,
     force_recompute=True,
     )
-    burn_in = 0
+    burn_in = 5000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
     # Run Importance Sampling and plot results

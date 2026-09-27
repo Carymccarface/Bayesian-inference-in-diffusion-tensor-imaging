@@ -70,7 +70,7 @@ from scipy.stats import gamma, norm, wishart, multivariate_normal
 from scipy.spatial.transform import Rotation
 from scipy.special import logsumexp, digamma
 from scipy.optimize import minimize
-
+import numdifftools as nd
 # DIPY: diffusion MRI utilities and models
 from dipy.io.image import load_nifti, save_nifti   # for loading / saving imaging datasets
 from dipy.io.gradients import read_bvals_bvecs     # for loading / saving our bvals and bvecs
@@ -551,12 +551,22 @@ class mvn_reparameterized:
     # Placeholder for multivariate normal approximation.
     # Hint: you may want to add input parameters to these methods.
     
-    def __init__(self):
-        raise NotImplementedError
+    def __init__(self,theta,cov):
+        self.theta=theta
+        self.cov=cov
     
     def rvs(self, size):
-        raise NotImplementedError
-    
+
+        theatas=multivariate_normal.rvs(mean=self.theta,cov=self.cov,size=size)
+        
+        S0_samples = np.exp(theatas[:,0])
+        
+        theatas = theatas[:, 1:]
+        
+        Ds=D_from_theta(theatas)
+        
+        evals_samples, evecs_samples = np.linalg.eigh(Ds)
+        
         return S0_samples, evals_samples, evecs_samples
 
 
@@ -605,15 +615,43 @@ def variational_inference(max_iters, K, learning_rate):
 
 
 @disk_memoize()
-def laplace_approximation():
+def laplace_approximation(y,gtab,S0_init,D_init):
     # Students: implement the Laplace Approximation here.
     # Before starting, make sure the prior, likelihood and mvn_reparameterized are implemented.
     # Note: you may change, add, or remove input parameters depending on your design
     # (e.g. pass initialization values like those prepared in main()).
+    
+    def _log_posteriori(theta,gtab,y):
 
-    raise NotImplementedError
+        S0 = np.exp(theta[0])
+        D=D_from_theta(theta[1:])
+        evals,evecs = np.linalg.eigh(D)
+        likelihood=frozen_likelihood(gtab,y)
+        prior = frozen_prior()
+        
+        val = (likelihood.logpdf(S0,evecs,evals)[0] + prior.logpdf(S0, evals[0],evals[1],evals[2],evecs))
 
-    return mvn_reparameterized(...)
+        return val
+    
+    neg_log_post = lambda theta: -_log_posteriori(theta, gtab, y)
+    
+    def grad(theta, gtab, y):
+            return nd.Gradient(lambda t: _log_posteriori(t, gtab, y))(theta)
+    
+    theta_init = np.concatenate([[np.log(S0_init)], theta_from_D(D_init)])
+    theta_hat = minimize(
+    neg_log_post, theta_init, method="L-BFGS-B",
+    jac=lambda theta: -grad(theta, gtab, y),
+    options={'gtol': 1e-8, 'ftol': 1e-12})
+    
+    print(theta_hat.success)
+
+    H = nd.Jacobian(lambda t: -grad(t, gtab, y))(theta_hat.x)
+    H = 0.5 * (H + H.T)
+    
+    cov = np.linalg.inv(H)
+    
+    return mvn_reparameterized(theta=theta_hat.x,cov=cov)
 
 
 
@@ -638,35 +676,35 @@ def main():
     np.random.seed(0)
     n_samples = 10000
 
-    y, point_estimate, gtab = get_preprocessed_data()
-    S0, evals, V = point_estimate
-    lambda1, lambda2, lambda3 = evals
+    # y, point_estimate, gtab = get_preprocessed_data()
+    # S0, evals, V = point_estimate
+    # lambda1, lambda2, lambda3 = evals
 
-    prior = frozen_prior()
-    prior_value = prior.logpdf(S0, lambda1, lambda2, lambda3, V)
+    # prior = frozen_prior()
+    # prior_value = prior.logpdf(S0, lambda1, lambda2, lambda3, V)
 
-    likelihood = frozen_likelihood(gtab, y)
-    likelihood_value = likelihood.logpdf(S0, V, evals)
+    # likelihood = frozen_likelihood(gtab, y)
+    # likelihood_value = likelihood.logpdf(S0, V, evals)
 
-    print("Log-prior:", prior_value)
-    print("Log-likelihood:", likelihood_value)
+    # print("Log-prior:", prior_value)
+    # print("Log-likelihood:", likelihood_value)
 
-    # Run Metropolis–Hastings and plot results
-    S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
-    burn_in = 0
-    plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
+    # # Run Metropolis–Hastings and plot results
+    # S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
+    # burn_in = 0
+    # plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
-    # Run Importance Sampling and plot results
-    w_is, S0_is, evals_is, evecs_is = importance_sampling(force_recompute=False)
-    plot_results(S0_is, evals_is, evecs_is, evec_principal, weights=w_is, method="is")
+    # # Run Importance Sampling and plot results
+    # w_is, S0_is, evals_is, evecs_is = importance_sampling(force_recompute=False)
+    # plot_results(S0_is, evals_is, evecs_is, evec_principal, weights=w_is, method="is")
 
-    # Run Variational Inference and plot results
-    posterior_vi = variational_inference(force_recompute=False)
-    S0_vi, evals_vi, evecs_vi = posterior_vi.rvs(size=n_samples)
-    plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
+    # # Run Variational Inference and plot results
+    # posterior_vi = variational_inference(force_recompute=False)
+    # S0_vi, evals_vi, evecs_vi = posterior_vi.rvs(size=n_samples)
+    # plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
 
     # Run Laplace Approximation and plot results
-    posterior_laplace = laplace_approximation(force_recompute=False)
+    posterior_laplace = laplace_approximation(y,gtab,S0_init,D_init,force_recompute=True)
     S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
     plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
 

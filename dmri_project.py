@@ -733,7 +733,7 @@ def main():
     # Run Metropolis–Hastings and plot results
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
-    n_samples=30000,
+    n_samples=50000,
     point_estimate=point_estimate,
     prior=prior,
     likelihood=likelihood,
@@ -743,7 +743,7 @@ def main():
     seed=42,
     force_recompute=True,
     )
-    burn_in = 5000
+    burn_in = 10000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
     # Run Importance Sampling and plot results
@@ -802,7 +802,7 @@ def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     fa = dti.fractional_anisotropy(evals).squeeze()
 
     # Compute acute angle between estimated and reference eigenvectors
-    angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 2], evec_ref)))
+    angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 0], evec_ref)))
     
     # Create 2x2 grid of histograms
     fig, axes = plt.subplots(2, 2, figsize=(12, 12), sharey=False)

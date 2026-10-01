@@ -929,10 +929,9 @@ def main():
     #plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
 
     # Run Laplace Approximation and plot results
-    #posterior_laplace = laplace_approximation(force_recompute=False)
-    #S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
-    #plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
-
+    posterior_laplace = laplace_approximation(y,gtab,S0_init,D_init,force_recompute=False)
+    S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
+    plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
     
     # Run Importance Sampling with Laplace proposal and plot results:
     w_is_laplace, S0_is_laplace, evals_is_laplace, evecs_is_laplace = importance_sampling_laplace(

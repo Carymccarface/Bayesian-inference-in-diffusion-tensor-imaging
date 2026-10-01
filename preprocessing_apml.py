@@ -68,6 +68,8 @@ print(D_eigenvalues)
 
 print("Are all eigenvalues positive?", np.all(D_eigenvalues > 0))
 
+print('Mean Diffusivity:')
+print(D_eigenvalues.mean())
 
 # ============================================================
 # 4. Inspect the MRI measurement settings

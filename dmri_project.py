@@ -701,6 +701,7 @@ def laplace_approximation(y,gtab,S0_init,D_init):
     print(theta_hat.success)
 
     H = nd.Jacobian(lambda t: -grad(t, gtab, y))(theta_hat.x)
+    H = H.T
     H = 0.5 * (H + H.T)
     
     cov = np.linalg.inv(H)

@@ -641,12 +641,13 @@ def laplace_approximation(y,gtab,S0_init,D_init):
     theta_init = np.concatenate([[np.log(S0_init)], theta_from_D(D_init)])
     theta_hat = minimize(
     neg_log_post, theta_init, method="L-BFGS-B",
-    jac=lambda theta: -grad(theta, gtab, y),
-    options={'gtol': 1e-8, 'ftol': 1e-12})
+    jac=lambda theta: -grad(theta, gtab, y))
     
     print(theta_hat.success)
-
+   
+   
     H = nd.Jacobian(lambda t: -grad(t, gtab, y))(theta_hat.x)
+    H=H.T
     H = 0.5 * (H + H.T)
     
     cov = np.linalg.inv(H)
@@ -704,7 +705,7 @@ def main():
     # plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
 
     # Run Laplace Approximation and plot results
-    posterior_laplace = laplace_approximation(y,gtab,S0_init,D_init,force_recompute=True)
+    posterior_laplace = laplace_approximation(y,gtab,S0_init,D_init,force_recompute=False)
     S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
     plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
 

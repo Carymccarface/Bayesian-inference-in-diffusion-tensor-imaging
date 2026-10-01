@@ -609,11 +609,6 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, gamma_para
             
             new_D = wishart.rvs(df=nu_param, scale=D/nu_param, random_state = rng)
             new_evals, new_V = np.linalg.eigh(new_D)
-            # np.linalg.eigh returns eigenvalues in ascending order.
-            # DIPY uses the largest eigenvalue first.
-            order = np.argsort(new_evals)[::-1]
-            new_evals = new_evals[order]
-            new_V = new_V[:, order]
 
             #score the proposed posterior
             new_log_posterior = log_posterior(new_S0, new_evals, new_V)
@@ -802,7 +797,7 @@ def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     fa = dti.fractional_anisotropy(evals).squeeze()
 
     # Compute acute angle between estimated and reference eigenvectors
-    angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 0], evec_ref)))
+    angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 2], evec_ref)))
     
     # Create 2x2 grid of histograms
     fig, axes = plt.subplots(2, 2, figsize=(12, 12), sharey=False)

@@ -59,6 +59,7 @@ import os
 import pickle
 import hashlib
 from functools import wraps
+import time
 
 # NumPy and Matplotlib: math and plotting
 import numpy as np
@@ -66,7 +67,7 @@ import matplotlib.pyplot as plt
 
 # SciPy: probability distributions, math functions, and optimization
 # Hint: these tools might be useful later in the project
-from scipy.stats import gamma, norm, wishart, multivariate_normal
+from scipy.stats import gamma, norm, wishart, multivariate_normal, bayes_mvs
 from scipy.spatial.transform import Rotation
 from scipy.special import logsumexp, digamma
 from scipy.optimize import minimize
@@ -792,7 +793,7 @@ def importance_sampling_laplace(n_samples, S0_init, D_init, input_seed, gtab, y)
     rng = np.random.default_rng(input_seed) 
 
     # Compute the Laplace approximation used as the posterior distribution:
-    laplace_posterior = laplace_approximation(y, gtab, S0_init, D_init)
+    laplace_posterior = laplace_approximation(y, gtab, S0_init, D_init,force_recompute=True)
 
     # Draw samples from the Laplace approximation for theta:
     theta_samples = multivariate_normal.rvs(mean=laplace_posterior.theta, cov=laplace_posterior.cov, size=n_samples, random_state=rng)
@@ -879,18 +880,20 @@ def main():
 
     # Run Metropolis–Hastings and plot results
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
+    metro_start = time.perf_counter()
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
-    n_samples=50000,
+    n_samples=10000,
     point_estimate=point_estimate,
     prior=prior,
     likelihood=likelihood,
     gamma_param = 0.02, 
     nu_param=5000, 
-    plot_traces=True,
+    plot_traces=False,
     seed=42,
     force_recompute=True,
     )
-    burn_in = 10000
+    metro_end=time.perf_counter()
+    burn_in = 000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
     #burn_in = 0
@@ -920,7 +923,9 @@ def main():
     # Run Importance Sampling (with chosen hyperparameters) and plot results
     gamma_param = 0.05 # based on tuning results
     nu_param = 225 # based on tuning results
+    is_start = time.perf_counter()
     w_is, S0_is, evals_is, evecs_is = importance_sampling(n_samples, gamma_param, nu_param, S0_init, D_init, input_seed=42, gtab=gtab, y=y, force_recompute=True)
+    is_end = time.perf_counter()
     plot_results(S0_is, evals_is, evecs_is, evec_principal, weights=w_is, method="is")
 
     # Run Variational Inference and plot results
@@ -929,22 +934,61 @@ def main():
     #plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
 
     # Run Laplace Approximation and plot results
-    #posterior_laplace = laplace_approximation(force_recompute=False)
-    #S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
-    #plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
+    lap_start =time.perf_counter()
+    posterior_laplace = laplace_approximation(y,gtab,S0_init,D_init,force_recompute=True)
+    lap_end =time.perf_counter()
+    S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
+    plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
 
     
     # Run Importance Sampling with Laplace proposal and plot results:
+    is_lap_start =time.perf_counter()
     w_is_laplace, S0_is_laplace, evals_is_laplace, evecs_is_laplace = importance_sampling_laplace(
     n_samples, S0_init=S0_init, D_init=D_init, input_seed=42, gtab=gtab, y=y, force_recompute=True)
+    is_lap_end=time.perf_counter()
 
     ESS_laplace = 1 / np.sum(w_is_laplace**2)
     print("ESS Laplace proposal =", ESS_laplace)
   
     plot_results(S0_is_laplace, evals_is_laplace, evecs_is_laplace, evec_principal,weights=w_is_laplace, method="is_laplace")
 
+    calculate_and_print_interval(S0_mh,evals_mh,evecs_mh,evec_principal,"Metropolis-Hastings")
+    calculate_and_print_interval(S0_is,evals_is,evecs_is,evec_principal,"Improtance ampling")
+    calculate_and_print_interval(S0_is_laplace,evals_is_laplace,evecs_is_laplace,evec_principal,"IS with Laplace Approximation")
+    calculate_and_print_interval(S0_laplace,evals_laplace,evecs_laplace,evec_principal,"Laplace Approximation")
+    
+    print(f'runtime Metropolis-Hastings: {metro_end-metro_start}')
+    print(f'runtime Improtance ampling: {is_end-is_start}')
+    print(f'runtime IS with Laplace Approximation: {is_lap_end-is_lap_start}')
+    print(f'runtime Laplace Approximation: {lap_end-lap_start}')
+    
     print("Done.")
 
+def calc_interval(variable,confidence):
+    
+    mean, var, std = bayes_mvs(variable,alpha=confidence)
+
+    return mean, var, std
+
+def calculate_and_print_interval(S0,evals,evecs,evec_ref,method):
+    S0 = S0.squeeze()
+    md = dti.mean_diffusivity(evals).squeeze()
+    fa = dti.fractional_anisotropy(evals).squeeze()
+    cl=0.95
+
+    # Compute acute angle between estimated and reference eigenvectors
+    angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 2], evec_ref)))
+    
+    S0_int,_,_=calc_interval(S0,cl)
+    md_int,_,_=calc_interval(md,cl)
+    fa_int,_,_=calc_interval(fa,cl)
+    angle_int,_,_=calc_interval(angle,cl)
+    
+    print(f"intervals for the method {method}")
+    print(f"The {cl} inteval for S0 is {S0_int}")
+    print(f"The {cl} inteval for md is {md_int}")
+    print(f"The {cl} inteval for fa is {fa_int}")
+    print(f"The {cl} inteval for angle is {angle_int}")
 
 def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     """

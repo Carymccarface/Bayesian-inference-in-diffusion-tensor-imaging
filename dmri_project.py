@@ -70,7 +70,7 @@ from scipy.stats import gamma, norm, wishart, multivariate_normal
 from scipy.spatial.transform import Rotation
 from scipy.special import logsumexp, digamma
 from scipy.optimize import minimize
-
+import numdifftools as nd
 # DIPY: diffusion MRI utilities and models
 from dipy.io.image import load_nifti, save_nifti   # for loading / saving imaging datasets
 from dipy.io.gradients import read_bvals_bvecs     # for loading / saving our bvals and bvecs
@@ -551,12 +551,22 @@ class mvn_reparameterized:
     # Placeholder for multivariate normal approximation.
     # Hint: you may want to add input parameters to these methods.
     
-    def __init__(self):
-        raise NotImplementedError
+    def __init__(self,theta,cov):
+        self.theta=theta
+        self.cov=cov
     
     def rvs(self, size):
-        raise NotImplementedError
-    
+
+        theatas=multivariate_normal.rvs(mean=self.theta,cov=self.cov,size=size)
+        
+        S0_samples = np.exp(theatas[:,0])
+        
+        theatas = theatas[:, 1:]
+        
+        Ds=D_from_theta(theatas)
+        
+        evals_samples, evecs_samples = np.linalg.eigh(Ds)
+        
         return S0_samples, evals_samples, evecs_samples
 
 
@@ -655,13 +665,65 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, gamma_para
 
 
 @disk_memoize()
-def importance_sampling(n_samples, gamma_param, nu_param):
+def importance_sampling(n_samples, gamma_param, nu_param, S0_init, D_init, input_seed, gtab, y):
     # Students: implement Importance Sampling here.
     # Before starting, make sure the prior and likelihood are implemented.
     # Note: you may change, add, or remove input parameters depending on your design
     # (e.g. pass initialization values like those prepared in main()).
 
-    raise NotImplementedError
+    rng = np.random.default_rng(input_seed)
+
+    # Draw samples of S0 from the Gamma proposal distribution:
+    S0_samples = gamma.rvs(a=gamma_param**(-2), scale=gamma_param**2 * S0_init, random_state=rng, size=n_samples)
+
+    # Draw samples of D from the Wishart proposal distribution:
+    D_samples = wishart.rvs(df=nu_param, scale=D_init/nu_param, random_state=rng, size=n_samples) 
+
+
+    # Decompose D into eigenvalues and eigenvectors
+    # We need these because the likelihood function expects
+    # eigenvalues and eigenvectors instead of D directly
+    evals_samples = []
+    evecs_samples = []
+
+    for D in D_samples:
+        evals, evecs = np.linalg.eigh(D)
+        evals_samples.append(evals)
+        evecs_samples.append(evecs)
+
+    evals_samples = np.array(evals_samples)
+    evecs_samples = np.array(evecs_samples)
+
+
+    # Approximate the posterior (goal distribution) using the prior and likelihood.
+    # log-likelihood + log-prior = log of the unnormalized posterior.
+    # The normalization constant p(y) is excluded since it is the same for all samples and will cancel out in the importance weights
+    log_likelihood = frozen_likelihood(gtab, y).logpdf(S0_samples, evecs_samples, evals_samples)
+    log_prior = frozen_prior().logpdf(S0_samples, evals_samples[:,0], evals_samples[:,1], evals_samples[:,2], evecs_samples)
+
+
+    # Compute the log of the proposal distribution:
+    log_proposal_S0 = gamma.logpdf(S0_samples, a=gamma_param**(-2), scale=gamma_param**2 * S0_init)
+    log_proposal_D = np.array([wishart.logpdf(D, df=nu_param, scale=D_init/nu_param) for D in D_samples])
+    log_proposal = log_proposal_S0 + log_proposal_D
+
+
+    # Compute the log of the Jacobian determinant for the transformation from D to (evals, evecs) for each sample:
+    log_jacobian = (
+    np.log(np.abs(evals_samples[:, 0] - evals_samples[:, 1])) +
+    np.log(np.abs(evals_samples[:, 0] - evals_samples[:, 2])) +
+    np.log(np.abs(evals_samples[:, 1] - evals_samples[:, 2]))
+)
+
+
+    # Compute the log weights for importance sampling: log w = log p(x) - log q(x) (w = p(x)/q(x)):
+    log_weights = log_likelihood + log_prior - log_jacobian - log_proposal
+
+
+
+    # Normalize weights to avoid numerical issues:
+    log_weights_normalized = log_weights - logsumexp(log_weights)
+    importance_weights = np.exp(log_weights_normalized)
 
     return importance_weights, S0_samples, evals_samples, evecs_samples
 
@@ -678,18 +740,108 @@ def variational_inference(max_iters, K, learning_rate):
     return variational_posterior(...)
 
 
+# KOPIERAD KOD FRÅN OLOF. 
+# Ska använda till alternative proposal
 @disk_memoize()
-def laplace_approximation():
+def laplace_approximation(y,gtab,S0_init,D_init):
     # Students: implement the Laplace Approximation here.
     # Before starting, make sure the prior, likelihood and mvn_reparameterized are implemented.
     # Note: you may change, add, or remove input parameters depending on your design
     # (e.g. pass initialization values like those prepared in main()).
+    
+    def _log_posteriori(theta,gtab,y):
 
-    raise NotImplementedError
+        S0 = np.exp(theta[0])
+        D=D_from_theta(theta[1:])
+        evals,evecs = np.linalg.eigh(D)
+        likelihood=frozen_likelihood(gtab,y)
+        prior = frozen_prior()
+        
+        val = (likelihood.logpdf(S0,evecs,evals)[0] + prior.logpdf(S0, evals[0],evals[1],evals[2],evecs))
 
-    return mvn_reparameterized(...)
+        return val
+    
+    neg_log_post = lambda theta: -_log_posteriori(theta, gtab, y)
+    
+    def grad(theta, gtab, y):
+            return nd.Gradient(lambda t: _log_posteriori(t, gtab, y))(theta)
+    
+    theta_init = np.concatenate([[np.log(S0_init)], theta_from_D(D_init)])
+    theta_hat = minimize(
+    neg_log_post, theta_init, method="L-BFGS-B",
+    jac=lambda theta: -grad(theta, gtab, y),
+    options={'gtol': 1e-8, 'ftol': 1e-12})
+    
+    print(theta_hat.success)
+
+    H = nd.Jacobian(lambda t: -grad(t, gtab, y))(theta_hat.x)
+    H = H.T
+    H = 0.5 * (H + H.T)
+    
+    cov = np.linalg.inv(H)
+    
+    return mvn_reparameterized(theta=theta_hat.x,cov=cov)
 
 
+
+
+# Alternative proposal for Importance Sampling:
+@disk_memoize()
+def importance_sampling_laplace(n_samples, S0_init, D_init, input_seed, gtab, y):
+
+    rng = np.random.default_rng(input_seed) 
+
+    # Compute the Laplace approximation used as the posterior distribution:
+    laplace_posterior = laplace_approximation(y, gtab, S0_init, D_init)
+
+    # Draw samples from the Laplace approximation for theta:
+    theta_samples = multivariate_normal.rvs(mean=laplace_posterior.theta, cov=laplace_posterior.cov, size=n_samples, random_state=rng)
+
+    # Transform theta samples to S0 and diffusion tensors:
+    S0_samples = np.exp(theta_samples[:, 0])
+    D_samples = D_from_theta(theta_samples[:, 1:])
+
+    # Decompose D into eigenvalues and eigenvectors:
+    evals_samples = []
+    evecs_samples = []
+    
+    for D in D_samples:
+        evals, evecs = np.linalg.eigh(D)
+        evals_samples.append(evals)
+        evecs_samples.append(evecs)
+    
+    evals_samples = np.array(evals_samples)
+    evecs_samples = np.array(evecs_samples)
+    
+
+    # Approximate the posterior (goal distribution) using the prior and likelihood:
+    log_likelihood = frozen_likelihood(gtab, y).logpdf(S0_samples, evecs_samples, evals_samples)
+    log_prior = frozen_prior().logpdf(S0_samples, evals_samples[:,0], evals_samples[:,1], evals_samples[:,2], evecs_samples)
+    
+    
+    # Compute the log of the proposal distribution:
+    log_proposal_theta = multivariate_normal.logpdf(theta_samples, mean=laplace_posterior.theta, cov=laplace_posterior.cov)
+
+    # Jacobian of theta -> (S0, D)
+    t0 = theta_samples[:, 0]
+    tD = theta_samples[:, 1:]
+    log_det_dg = t0 + 4 * tD[:, 0] + 3 * tD[:, 2] + 2 * tD[:, 5] + 3 * np.log(2)
+
+    # Jacobian of D -> (evals, V), same as in the original proposal
+    log_jacobian = (
+        np.log(np.abs(evals_samples[:, 0] - evals_samples[:, 1])) +
+        np.log(np.abs(evals_samples[:, 0] - evals_samples[:, 2])) +
+        np.log(np.abs(evals_samples[:, 1] - evals_samples[:, 2]))
+    )
+
+    # Proposal density in (S0, evals, V)-space:
+    log_proposal = log_proposal_theta - log_det_dg + log_jacobian
+
+    log_weights = log_likelihood + log_prior - log_proposal
+    log_weights_normalized = log_weights - logsumexp(log_weights)
+    importance_weights = np.exp(log_weights_normalized)
+
+    return importance_weights, S0_samples, evals_samples, evecs_samples
 
 """
 =============================================================================
@@ -727,6 +879,7 @@ def main():
 
     # Run Metropolis–Hastings and plot results
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
+<<<<<<< HEAD
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
     n_samples=50000,
     point_estimate=point_estimate,
@@ -740,20 +893,57 @@ def main():
     )
     burn_in = 10000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
+=======
+    #burn_in = 0
+    #plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
+>>>>>>> lova-branch
 
-    # Run Importance Sampling and plot results
-    w_is, S0_is, evals_is, evecs_is = importance_sampling(force_recompute=False)
+    # Importance Sampling:
+    # Tuning the hyperparameters for Importance Sampling:
+
+    #gamma_values = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.5, 1, 10, 100]
+    #nu_values = [50, 60, 70, 80, 90, 100, 150, 200, 250, 300, 500, 1000, 2000]
+
+    gamma_values = [0.05, 0.055, 0.06, 0.065, 0.07, 0.075]
+    nu_values = [200, 215, 225, 240, 250, 260, 275, 2000]
+
+    ESS_results = []
+
+    for gamma_param in gamma_values:
+        for nu_param in nu_values:
+            w_is, S0_is, evals_is, evecs_is = importance_sampling(n_samples, gamma_param, nu_param, S0_init, D_init, input_seed=42, gtab=gtab, y=y, force_recompute=True)
+            # Calculate Effective Sample Size (ESS) for the current hyperparameter combination:
+            ESS = 1 / np.sum(w_is**2)
+            ESS_results.append((gamma_param, nu_param, ESS))
+
+            print(f"Gamma = {gamma_param}, Nu = {nu_param}, ESS ={ESS}")
+
+
+    # Run Importance Sampling (with chosen hyperparameters) and plot results
+    gamma_param = 0.05 # based on tuning results
+    nu_param = 225 # based on tuning results
+    w_is, S0_is, evals_is, evecs_is = importance_sampling(n_samples, gamma_param, nu_param, S0_init, D_init, input_seed=42, gtab=gtab, y=y, force_recompute=True)
     plot_results(S0_is, evals_is, evecs_is, evec_principal, weights=w_is, method="is")
 
     # Run Variational Inference and plot results
-    posterior_vi = variational_inference(force_recompute=False)
-    S0_vi, evals_vi, evecs_vi = posterior_vi.rvs(size=n_samples)
-    plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
+    #posterior_vi = variational_inference(force_recompute=False)
+    #S0_vi, evals_vi, evecs_vi = posterior_vi.rvs(size=n_samples)
+    #plot_results(S0_vi, evals_vi, evecs_vi, evec_principal, method="vi")
 
     # Run Laplace Approximation and plot results
-    posterior_laplace = laplace_approximation(force_recompute=False)
-    S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
-    plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
+    #posterior_laplace = laplace_approximation(force_recompute=False)
+    #S0_laplace, evals_laplace, evecs_laplace = posterior_laplace.rvs(size=n_samples)
+    #plot_results(S0_laplace, evals_laplace, evecs_laplace, evec_principal, method="laplace")
+
+    
+    # Run Importance Sampling with Laplace proposal and plot results:
+    w_is_laplace, S0_is_laplace, evals_is_laplace, evecs_is_laplace = importance_sampling_laplace(
+    n_samples, S0_init=S0_init, D_init=D_init, input_seed=42, gtab=gtab, y=y, force_recompute=True)
+
+    ESS_laplace = 1 / np.sum(w_is_laplace**2)
+    print("ESS Laplace proposal =", ESS_laplace)
+  
+    plot_results(S0_is_laplace, evals_is_laplace, evecs_is_laplace, evec_principal,weights=w_is_laplace, method="is_laplace")
 
     print("Done.")
 

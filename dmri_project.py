@@ -879,7 +879,6 @@ def main():
 
     # Run Metropolis–Hastings and plot results
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
-<<<<<<< HEAD
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
     n_samples=50000,
     point_estimate=point_estimate,
@@ -893,10 +892,9 @@ def main():
     )
     burn_in = 10000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
-=======
+
     #burn_in = 0
     #plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
->>>>>>> lova-branch
 
     # Importance Sampling:
     # Tuning the hyperparameters for Importance Sampling:

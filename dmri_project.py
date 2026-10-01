@@ -741,7 +741,6 @@ def variational_inference(max_iters, K, learning_rate):
     return variational_posterior(...)
 
 
-# KOPIERAD KOD FRÅN OLOF. 
 # Ska använda till alternative proposal
 @disk_memoize()
 def laplace_approximation(y,gtab,S0_init,D_init):
@@ -893,12 +892,10 @@ def main():
     force_recompute=True,
     )
     metro_end=time.perf_counter()
-    burn_in = 000
+    burn_in = 2000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
-    #burn_in = 0
-    #plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
-
+  
     # Importance Sampling:
     # Tuning the hyperparameters for Importance Sampling:
 

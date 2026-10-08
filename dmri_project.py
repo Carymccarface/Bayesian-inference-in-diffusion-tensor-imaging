@@ -955,7 +955,7 @@ def main():
   
     plot_results(S0_is_laplace, evals_is_laplace, evecs_is_laplace, evec_principal,weights=w_is_laplace, method="is_laplace")
 
-    calculate_and_print_interval(S0_mh,evals_mh,evecs_mh,evec_principal,"Metropolis-Hastings")
+    calculate_and_print_interval(S0_mh[burn_in:],evals_mh[burn_in:],evecs_mh[burn_in:],evec_principal, "Metropolis-Hastings")
     calculate_and_print_interval(S0_is,evals_is,evecs_is,evec_principal,"Improtance ampling")
     calculate_and_print_interval(S0_is_laplace,evals_is_laplace,evecs_is_laplace,evec_principal,"IS with Laplace Approximation")
     calculate_and_print_interval(S0_laplace,evals_laplace,evecs_laplace,evec_principal,"Laplace Approximation")

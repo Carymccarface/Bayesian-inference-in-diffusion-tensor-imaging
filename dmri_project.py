@@ -590,8 +590,14 @@ def metropolis_hastings(n_samples, point_estimate, prior, likelihood, gamma_para
 
     # This corresponds to pi 
     def log_posterior(S0, evals, V):
-        log_post = prior.logpdf(S0, evals[0], evals[1], evals[2], V) + likelihood.logpdf(S0, V, evals)
-        return log_post
+        log_prior = prior.logpdf(S0, evals[0], evals[1], evals[2], V)
+        log_likelihood = likelihood.logpdf(S0, V, evals)
+
+        # Change-of-variables correction from eigenvalues and
+        # eigenvectors to the matrix D.
+        log_jacobian = (np.log(abs(evals[0] - evals[1]))+ np.log(abs(evals[0] - evals[2]))+ np.log(abs(evals[1] - evals[2])))
+
+        return log_prior + log_likelihood - log_jacobian
     
     # 1. Initialize current parameters from point_estimate.
     S0, evals, V = point_estimate
@@ -881,7 +887,7 @@ def main():
     #S0_mh, evals_mh, evecs_mh = metropolis_hastings(force_recompute=False)
     metro_start = time.perf_counter()
     S0_mh, evals_mh, evecs_mh = metropolis_hastings(
-    n_samples=10000,
+    n_samples=50000,
     point_estimate=point_estimate,
     prior=prior,
     likelihood=likelihood,
@@ -892,7 +898,7 @@ def main():
     force_recompute=True,
     )
     metro_end=time.perf_counter()
-    burn_in = 2000
+    burn_in = 10000
     plot_results(S0_mh[burn_in:], evals_mh[burn_in:], evecs_mh[burn_in:, :, :], evec_principal, method="mh")
 
   

@@ -67,7 +67,8 @@ import matplotlib.pyplot as plt
 
 # SciPy: probability distributions, math functions, and optimization
 # Hint: these tools might be useful later in the project
-from scipy.stats import gamma, norm, wishart, multivariate_normal, bayes_mvs
+from scipy.stats import gamma, norm, wishart, multivariate_normal
+import arviz as az
 from scipy.spatial.transform import Rotation
 from scipy.special import logsumexp, digamma
 from scipy.optimize import minimize
@@ -762,8 +763,9 @@ def laplace_approximation(y,gtab,S0_init,D_init):
         evals,evecs = np.linalg.eigh(D)
         likelihood=frozen_likelihood(gtab,y)
         prior = frozen_prior()
+        log_jacobian = theta[0] + np.log(8) + 4*theta[1] + 3*theta[3] + 2*theta[6]
         
-        val = (likelihood.logpdf(S0,evecs,evals)[0] + prior.logpdf(S0, evals[0],evals[1],evals[2],evecs))
+        val = (likelihood.logpdf(S0,evecs,evals)[0] + prior.logpdf(S0, evals[0],evals[1],evals[2],evecs) - log_jacobian) 
 
         return val
     
@@ -969,9 +971,9 @@ def main():
 
 def calc_interval(variable,confidence):
     
-    mean, var, std = bayes_mvs(variable,alpha=confidence)
+    interval = az.hdi(variable,confidence)
 
-    return mean, var, std
+    return interval
 
 def calculate_and_print_interval(S0,evals,evecs,evec_ref,method):
     S0 = S0.squeeze()
@@ -982,16 +984,16 @@ def calculate_and_print_interval(S0,evals,evecs,evec_ref,method):
     # Compute acute angle between estimated and reference eigenvectors
     angle = 360/(2*np.pi) * np.arccos(np.abs(np.dot(evecs[:, :, 2], evec_ref)))
     
-    S0_int,_,_=calc_interval(S0,cl)
-    md_int,_,_=calc_interval(md,cl)
-    fa_int,_,_=calc_interval(fa,cl)
-    angle_int,_,_=calc_interval(angle,cl)
+    S0_int = calc_interval(S0,cl)
+    md_int = calc_interval(md,cl)
+    fa_int = calc_interval(fa,cl)
+    angle_int = calc_interval(angle,cl)
     
     print(f"intervals for the method {method}")
-    print(f"The {cl} inteval for S0 is {S0_int}")
-    print(f"The {cl} inteval for md is {md_int}")
-    print(f"The {cl} inteval for fa is {fa_int}")
-    print(f"The {cl} inteval for angle is {angle_int}")
+    print(f"The {cl} inteval for S0 is {S0_int}, mean is {np.mean(S0)}")
+    print(f"The {cl} inteval for md is {md_int} , mean is {np.mean(md)}")
+    print(f"The {cl} inteval for fa is {fa_int}, mean is {np.mean(fa)}")
+    print(f"The {cl} inteval for angle is {angle_int}, mean is {np.mean(angle)}")
 
 def plot_results(S0, evals, evecs, evec_ref, weights=None, method=""):
     """

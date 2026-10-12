@@ -449,19 +449,10 @@ class frozen_prior:
         log_prior_lambda1 = gamma.logpdf(lambda1, a=self.alpha_lambda, scale=self.theta_lambda)
         log_prior_lambda2 = gamma.logpdf(lambda2, a=self.alpha_lambda, scale=self.theta_lambda)
         log_prior_lambda3 = gamma.logpdf(lambda3, a=self.alpha_lambda, scale=self.theta_lambda)
-        log_prior_V = 0 # idkkk?
+        log_prior_V = 0 
 
         return (log_prior_S0 + log_prior_lambda1 + log_prior_lambda2 + log_prior_lambda3 + log_prior_V)
-
-#prior = frozen_prior()
-#sample = prior.rvs(42)
-
-#print(sample)
-
-#x = prior.logpdf(sample[0], sample[1][0], sample[1][1], sample[1][2], sample[2])
-#print(x)
-
-
+    
 class frozen_likelihood:
     # Placeholder for the likelihood (with partial code provided).
     # Hint: you may want to add input parameters to these methods.
@@ -756,6 +747,7 @@ def laplace_approximation(y,gtab,S0_init,D_init):
     # Note: you may change, add, or remove input parameters depending on your design
     # (e.g. pass initialization values like those prepared in main()).
     
+    # define the log posetrior
     def _log_posteriori(theta,gtab,y):
 
         S0 = np.exp(theta[0])
@@ -769,11 +761,14 @@ def laplace_approximation(y,gtab,S0_init,D_init):
 
         return val
     
+    #work with the neagativ poseterior
     neg_log_post = lambda theta: -_log_posteriori(theta, gtab, y)
     
+    #calculate gradiant
     def grad(theta, gtab, y):
             return nd.Gradient(lambda t: _log_posteriori(t, gtab, y))(theta)
     
+    #use initial values
     theta_init = np.concatenate([[np.log(S0_init)], theta_from_D(D_init)])
     theta_hat = minimize(
     neg_log_post, theta_init, method="L-BFGS-B",
@@ -782,6 +777,7 @@ def laplace_approximation(y,gtab,S0_init,D_init):
     
     print(theta_hat.success)
 
+    #calculate Hessian via nudifftools
     H = nd.Jacobian(lambda t: -grad(t, gtab, y))(theta_hat.x)
     H = H.T
     H = 0.5 * (H + H.T)
